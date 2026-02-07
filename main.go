@@ -31,6 +31,7 @@ func run() int {
 	flag.StringVar(&region, "r", "us-central1", "GCP region")
 	flag.StringVar(&model, "m", "gemini-2.5-flash", "Gemini model name")
 	flag.BoolVar(&stagedOnly, "staged-only", false, "Only include staged changes")
+	flag.BoolVar(&stagedOnly, "s", false, "Only include staged changes (alias for --staged-only)")
 	flag.BoolVar(&verbose, "verbose", false, "Print diff stats and model info to stderr")
 
 	flag.Usage = func() {
