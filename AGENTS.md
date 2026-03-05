@@ -1,4 +1,4 @@
-# Golang Cursor Rules
+# Rules to Live By
 
 ## Think Hard
 **CRITICAL: Think deeply before taking action**
