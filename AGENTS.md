@@ -133,6 +133,7 @@
   - `make release` - Create a release (tag, build, changelog update)
 - Keep version in sync with git tags when releasing
 - Update CHANGELOG.md when version changes
+- Baking the version into `version.go` at build time (rather than reading from git tags or external sources) is the standard pattern for this project — the binary always knows its own version without any runtime dependencies
 
 ## Code Quality
 **CRITICAL: DRY (Don't Repeat Yourself) is an absolute requirement**
@@ -182,6 +183,9 @@
 - Use meaningful branch names
 - **MANDATORY**: Update `CHANGELOG.md` before every commit/checkin
 - Never commit changes without updating `CHANGELOG.md` first
+- **MANDATORY**: Always use `make push` to commit and publish changes — never run `git add`, `git commit`, or `git push` manually
+- `make push` handles the full release cycle: version bump → build → commit (with AI-generated message) → push → tag → push tag
+- Never bypass `make push` with manual git commands; doing so will desync the version, binary, and git tags
 
 ## CHANGELOG.md Documentation Requirement
 **CRITICAL: CHANGELOG.md must ALWAYS be updated before checkin and for ALL changes**
