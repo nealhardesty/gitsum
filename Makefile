@@ -1,7 +1,7 @@
 BINARY := gitsum
 VERSION := $(shell grep 'const Version' version.go | cut -d'"' -f2)
 
-.PHONY: build test run clean lint fmt tidy version version-increment release help
+.PHONY: build test run clean lint fmt tidy version version-increment release push help
 
 ## build: Compile the project
 build:
@@ -47,6 +47,23 @@ version-increment:
 	sed -i "s/const Version = \"$(VERSION)\"/const Version = \"$$NEW_VERSION\"/" version.go; \
 	echo "Version updated to $$NEW_VERSION"
 
+## push: Bump version, build, commit all changes with AI-generated message, tag, and push
+push:
+	@MAJOR=$$(echo $(VERSION) | cut -d. -f1); \
+	MINOR=$$(echo $(VERSION) | cut -d. -f2); \
+	PATCH=$$(echo $(VERSION) | cut -d. -f3); \
+	NEW_PATCH=$$((PATCH + 1)); \
+	NEW_VERSION="$$MAJOR.$$MINOR.$$NEW_PATCH"; \
+	sed -i "s/const Version = \"$(VERSION)\"/const Version = \"$$NEW_VERSION\"/" version.go; \
+	echo "Version bumped to $$NEW_VERSION"; \
+	go build -o $(BINARY) .; \
+	git add .; \
+	git commit -m "$$(./$(BINARY))"; \
+	git push origin; \
+	git tag -a "v$$NEW_VERSION" -m "Release v$$NEW_VERSION"; \
+	git push origin "v$$NEW_VERSION"; \
+	echo "Released v$$NEW_VERSION"
+
 ## release: Create a git tag for the current version
 release: build
 	git tag -a "v$(VERSION)" -m "Release v$(VERSION)"
@@ -57,3 +74,4 @@ help:
 	@echo "$(BINARY) v$(VERSION) - Available targets:"
 	@echo ""
 	@grep -E '^## ' $(MAKEFILE_LIST) | sed 's/## /  /'
+
