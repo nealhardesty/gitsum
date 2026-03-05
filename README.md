@@ -2,7 +2,7 @@
 
 Generate concise git commit message summaries using Google Gemini via Vertex AI.
 
-`gitsum` reads the staged and unstaged diffs from a git repository and sends them to Gemini to produce a short, imperative-mood commit message suitable for use with `git commit -m`.
+`gitsum` reads diffs from a git repository and sends them to Gemini to produce a short, imperative-mood commit message suitable for use with `git commit -m`. By default it uses staged changes only, falling back to all changes when nothing is staged.
 
 ## Installation
 
@@ -31,14 +31,14 @@ gcloud auth application-default login
 ## Usage
 
 ```bash
-# Generate a commit message for current changes (uses gcloud default project)
+# Generate a commit message (staged changes only; falls back to all if nothing staged)
 gitsum
 
 # Use directly with git commit
 git commit -m "$(gitsum)"
 
-# Only summarize staged changes
-gitsum --staged-only
+# Include all changes (staged + unstaged + untracked) regardless of staging
+gitsum --all
 
 # Use a different model or region
 gitsum -m gemini-2.5-pro -r us-east1
@@ -59,7 +59,7 @@ gitsum --verbose
 | `-p <project>` | gcloud default | GCP project ID |
 | `-r <region>` | `us-central1` | GCP region |
 | `-m <model>` | `gemini-2.5-flash` | Gemini model name |
-| `--staged-only` | `false` | Only include staged changes |
+| `--all` / `-a` | `false` | Include all changes (staged + unstaged + untracked) |
 | `--verbose` | `false` | Print diff stats and model info to stderr |
 
 ## Project Resolution

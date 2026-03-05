@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.2] - 2026-03-05
+
+### Changed
+- Default behavior now uses staged changes only; falls back to all changes when nothing is staged
+- Replaced `--staged-only` / `-s` flags with `--all` / `-a` to force inclusion of all changes
+- Updated `GetDiff` signature: `stagedOnly bool` → `includeAll bool`
+- Updated help text to describe new default behavior
+- Updated tests: renamed `TestGetDiff_StagedOnly` → `TestGetDiff_DefaultStagedOnly`, added `TestGetDiff_IncludeAll`
+
+## [0.1.1] - 2026-02-14
+
+### Added
+- Short alias `-s` for `--staged-only` flag
+
 ## [0.1.0] - 2026-02-06
 
 ### Added

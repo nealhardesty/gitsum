@@ -102,7 +102,38 @@ func TestGetDiff_StagedChanges(t *testing.T) {
 	}
 }
 
-func TestGetDiff_StagedOnly(t *testing.T) {
+// TestGetDiff_DefaultStagedOnly verifies that when staged changes exist,
+// the default (includeAll=false) returns only staged changes.
+func TestGetDiff_DefaultStagedOnly(t *testing.T) {
+	dir := initTestRepo(t)
+
+	// Stage a change and also have an unstaged change.
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("# staged\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("git", "add", "README.md")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v\n%s", err, out)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("# staged then modified\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	diff, err := GetDiff(dir, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if diff.Staged == "" {
+		t.Error("expected staged diff, got empty")
+	}
+	if diff.Unstaged != "" {
+		t.Errorf("expected empty unstaged diff when staged changes exist (default mode), got %q", diff.Unstaged)
+	}
+}
+
+// TestGetDiff_IncludeAll verifies that includeAll=true returns both staged and unstaged.
+func TestGetDiff_IncludeAll(t *testing.T) {
 	dir := initTestRepo(t)
 
 	// Stage a change and also have an unstaged change.
@@ -125,15 +156,15 @@ func TestGetDiff_StagedOnly(t *testing.T) {
 	if diff.Staged == "" {
 		t.Error("expected staged diff, got empty")
 	}
-	if diff.Unstaged != "" {
-		t.Errorf("expected empty unstaged diff with staged-only, got %q", diff.Unstaged)
+	if diff.Unstaged == "" {
+		t.Error("expected unstaged diff with includeAll=true, got empty")
 	}
 }
 
 func TestGetDiff_Combined(t *testing.T) {
 	dir := initTestRepo(t)
 
-	// Create both staged and unstaged changes.
+	// Create both staged and untracked changes.
 	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("# staged\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +178,7 @@ func TestGetDiff_Combined(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	diff, err := GetDiff(dir, false)
+	diff, err := GetDiff(dir, true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -159,8 +190,9 @@ func TestGetDiff_Combined(t *testing.T) {
 	if diff.Staged == "" {
 		t.Error("expected staged diff")
 	}
-	// new.txt is untracked, not modified, so unstaged may be empty.
-	// That's fine - this test verifies Combined() works.
+	if diff.Untracked == "" {
+		t.Error("expected untracked diff")
+	}
 }
 
 func TestGetDiff_InvalidDir(t *testing.T) {

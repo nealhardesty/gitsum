@@ -21,7 +21,7 @@ func run() int {
 		project     string
 		region      string
 		model       string
-		stagedOnly  bool
+		includeAll  bool
 		verbose     bool
 	)
 
@@ -30,13 +30,15 @@ func run() int {
 	flag.StringVar(&project, "p", "", "GCP project ID (default: gcloud config project)")
 	flag.StringVar(&region, "r", "us-central1", "GCP region")
 	flag.StringVar(&model, "m", "gemini-2.5-flash", "Gemini model name")
-	flag.BoolVar(&stagedOnly, "staged-only", false, "Only include staged changes")
-	flag.BoolVar(&stagedOnly, "s", false, "Only include staged changes (alias for --staged-only)")
+	flag.BoolVar(&includeAll, "all", false, "Include all changes (staged + unstaged + untracked)")
+	flag.BoolVar(&includeAll, "a", false, "Include all changes (alias for --all)")
 	flag.BoolVar(&verbose, "verbose", false, "Print diff stats and model info to stderr")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "gitsum v%s - Generate git commit message summaries using Gemini\n\n", Version)
 		fmt.Fprintf(os.Stderr, "Usage: gitsum [options]\n\n")
+		fmt.Fprintf(os.Stderr, "Default behavior: uses staged changes only; falls back to all changes\n")
+		fmt.Fprintf(os.Stderr, "if nothing is staged.\n\n")
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		flag.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\nProject resolution order:\n")
@@ -74,7 +76,7 @@ func run() int {
 	}
 
 	// Get the diff.
-	diff, err := GetDiff(dir, stagedOnly)
+	diff, err := GetDiff(dir, includeAll)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return 1

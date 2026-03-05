@@ -34,8 +34,10 @@ func (d DiffResult) IsEmpty() bool {
 }
 
 // GetDiff extracts git diffs from the given directory.
-// If stagedOnly is true, only staged (cached) changes are returned.
-func GetDiff(dir string, stagedOnly bool) (DiffResult, error) {
+// If includeAll is false (default), only staged changes are returned; if there
+// are no staged changes, it falls back to all changes (unstaged + untracked).
+// If includeAll is true, all changes are always returned regardless of staging.
+func GetDiff(dir string, includeAll bool) (DiffResult, error) {
 	var result DiffResult
 
 	staged, err := runGit(dir, "diff", "--cached")
@@ -44,14 +46,15 @@ func GetDiff(dir string, stagedOnly bool) (DiffResult, error) {
 	}
 	result.Staged = strings.TrimSpace(staged)
 
-	if !stagedOnly {
+	// Include unstaged/untracked when explicitly requested OR when there are
+	// no staged changes (fallback so the tool is always useful).
+	if includeAll || result.Staged == "" {
 		unstaged, err := runGit(dir, "diff")
 		if err != nil {
 			return result, fmt.Errorf("getting unstaged diff: %w", err)
 		}
 		result.Unstaged = strings.TrimSpace(unstaged)
 
-		// Get untracked files
 		untracked, err := getUntrackedDiff(dir)
 		if err != nil {
 			return result, fmt.Errorf("getting untracked files: %w", err)
