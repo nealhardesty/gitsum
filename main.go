@@ -5,9 +5,11 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"os/signal"
 	"strings"
+	"time"
+
+	llm "github.com/nealhardesty/easy-llm-wrapper"
 )
 
 func main() {
@@ -18,36 +20,38 @@ func run() int {
 	var (
 		showVersion bool
 		dir         string
-		project     string
-		region      string
 		model       string
 		includeAll  bool
 		verbose     bool
+		debug       bool
+		extraDebug  bool
+		noStream    bool
 	)
 
 	flag.BoolVar(&showVersion, "v", false, "Print version and exit")
-	flag.StringVar(&dir, "d", ".", "Git repository directory")
-	flag.StringVar(&project, "p", "", "GCP project ID (default: gcloud config project)")
-	flag.StringVar(&region, "r", "us-central1", "GCP region")
-	flag.StringVar(&model, "m", "gemini-2.5-flash", "Gemini model name")
+	flag.StringVar(&dir, "dir", ".", "Git repository directory")
+	flag.StringVar(&model, "m", "gpt-oss:20b", "Model override (also honoured via MODEL env var)")
 	flag.BoolVar(&includeAll, "all", false, "Include all changes (staged + unstaged + untracked)")
 	flag.BoolVar(&includeAll, "a", false, "Include all changes (alias for --all)")
 	flag.BoolVar(&verbose, "verbose", false, "Print diff stats and model info to stderr")
+	flag.BoolVar(&debug, "d", false, "Debug mode: print env, config, diff stats, and prompt sizes to stderr")
+	flag.BoolVar(&extraDebug, "D", false, "Extra debug: everything -d does plus print prompts to stderr and write system-prompt.txt / user-prompt.txt")
+	flag.BoolVar(&noStream, "S", false, "Disable streaming (collect full response before printing)")
 
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "gitsum v%s - Generate git commit message summaries using Gemini\n\n", Version)
+		fmt.Fprintf(os.Stderr, "gitsum v%s - Generate git commit messages using an LLM\n\n", Version)
 		fmt.Fprintf(os.Stderr, "Usage: gitsum [options]\n\n")
 		fmt.Fprintf(os.Stderr, "Default behavior: uses staged changes only; falls back to all changes\n")
-		fmt.Fprintf(os.Stderr, "if nothing is staged.\n\n")
+		fmt.Fprintf(os.Stderr, "if nothing is staged. Responses are streamed by default.\n\n")
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		flag.PrintDefaults()
-		fmt.Fprintf(os.Stderr, "\nProject resolution order:\n")
-		fmt.Fprintf(os.Stderr, "  1. -p flag\n")
-		fmt.Fprintf(os.Stderr, "  2. GOOGLE_CLOUD_PROJECT env var\n")
-		fmt.Fprintf(os.Stderr, "  3. CLOUDSDK_CORE_PROJECT env var\n")
-		fmt.Fprintf(os.Stderr, "  4. gcloud config get-value project\n\n")
-		fmt.Fprintf(os.Stderr, "Authentication:\n")
-		fmt.Fprintf(os.Stderr, "  Run 'gcloud auth application-default login' to authenticate.\n\n")
+		fmt.Fprintf(os.Stderr, "\nProvider configuration (environment variables):\n")
+		fmt.Fprintf(os.Stderr, "  OLLAMA_HOST        Ollama base URL (e.g. http://localhost:11434)\n")
+		fmt.Fprintf(os.Stderr, "                     When set, Ollama is used as the provider.\n")
+		fmt.Fprintf(os.Stderr, "  OPENROUTER_API_KEY OpenRouter API key.\n")
+		fmt.Fprintf(os.Stderr, "                     Used when OLLAMA_HOST is not set.\n")
+		fmt.Fprintf(os.Stderr, "  MODEL              Override the model (takes priority over -m flag).\n\n")
+		fmt.Fprintf(os.Stderr, "Provider selection: Ollama takes priority over OpenRouter.\n\n")
 		fmt.Fprintf(os.Stderr, "Example:\n")
 		fmt.Fprintf(os.Stderr, "  git commit -m \"$(gitsum)\"\n")
 	}
@@ -59,20 +63,37 @@ func run() int {
 		return 0
 	}
 
-	// Resolve project: flag > env vars > gcloud config.
-	if project == "" {
-		project = os.Getenv("GOOGLE_CLOUD_PROJECT")
+	// -D implies -d.
+	if extraDebug {
+		debug = true
 	}
-	if project == "" {
-		project = os.Getenv("CLOUDSDK_CORE_PROJECT")
+
+	if debug {
+		debugf("=== gitsum v%s ===", Version)
+		debugf("OLLAMA_HOST        = %q", os.Getenv("OLLAMA_HOST"))
+		debugf("OPENROUTER_API_KEY = %q", maskSecret(os.Getenv("OPENROUTER_API_KEY")))
+		debugf("MODEL (env)        = %q", os.Getenv("MODEL"))
+		debugf("-m flag            = %q", model)
+		debugf("--dir              = %q", dir)
+		debugf("--all              = %v", includeAll)
+		debugf("streaming          = %v", !noStream)
 	}
-	if project == "" {
-		p, err := getDefaultProject()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: no GCP project ID found: %v\n", err)
-			return 1
-		}
-		project = p
+
+	// Apply model default: env var takes priority, then -m flag.
+	if os.Getenv("MODEL") == "" {
+		os.Setenv("MODEL", model)
+	}
+
+	// Create LLM client early for fail-fast behavior.
+	client, err := llm.NewClient()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 1
+	}
+
+	if debug {
+		debugf("provider           = %s", client.Provider())
+		debugf("model              = %s", client.Model())
 	}
 
 	// Get the diff.
@@ -89,53 +110,115 @@ func run() int {
 
 	combined := diff.Combined()
 
-	if verbose {
+	if debug || verbose {
 		fmt.Fprintf(os.Stderr, "Staged diff:    %d chars\n", len(diff.Staged))
 		fmt.Fprintf(os.Stderr, "Unstaged diff:  %d chars\n", len(diff.Unstaged))
 		fmt.Fprintf(os.Stderr, "Untracked diff: %d chars\n", len(diff.Untracked))
-		fmt.Fprintf(os.Stderr, "Model:          %s\n", model)
-		fmt.Fprintf(os.Stderr, "Project:        %s\n", project)
-		fmt.Fprintf(os.Stderr, "Region:         %s\n", region)
+		fmt.Fprintf(os.Stderr, "Provider:       %s\n", client.Provider())
+		fmt.Fprintf(os.Stderr, "Model:          %s\n", client.Model())
 	}
 
 	// Build the prompt.
-	prompt, truncated := BuildPrompt(combined)
+	system, user, truncated := BuildPrompt(combined)
 	if truncated {
 		fmt.Fprintf(os.Stderr, "Warning: diff truncated to %d characters\n", MaxDiffChars)
 	}
 
-	// Call Gemini.
+	if debug {
+		debugf("system prompt      = %d chars", len(system))
+		debugf("user prompt        = %d chars", len(user))
+		debugf("truncated          = %v", truncated)
+	}
+
+	if extraDebug {
+		if werr := os.WriteFile("system-prompt.txt", []byte(system), 0644); werr != nil {
+			debugf("warning: could not write system-prompt.txt: %v", werr)
+		} else {
+			debugf("system-prompt.txt written")
+		}
+		if werr := os.WriteFile("user-prompt.txt", []byte(user), 0644); werr != nil {
+			debugf("warning: could not write user-prompt.txt: %v", werr)
+		} else {
+			debugf("user-prompt.txt written")
+		}
+		debugf("--- system prompt (%d chars) ---", len(system))
+		fmt.Fprintln(os.Stderr, system)
+		debugf("--- user prompt (%d chars) ---", len(user))
+		fmt.Fprintln(os.Stderr, user)
+		debugf("--- end prompts ---")
+	}
+
+	if debug {
+		debugf("--- sending to LLM ---")
+	}
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
-	summarizer := &GeminiSummarizer{
-		Project:  project,
-		Location: region,
-		Model:    model,
+	start := time.Now()
+
+	if !noStream {
+		stream, serr := client.Stream(ctx, llm.Request{
+			System: system,
+			Messages: []llm.Message{
+				{Role: llm.RoleUser, Parts: []llm.Part{llm.TextPart(user)}},
+			},
+		})
+		if serr != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", serr)
+			return 1
+		}
+		defer stream.Close()
+
+		var chunks, totalChars int
+		for stream.Next() {
+			chunk := stream.Chunk()
+			fmt.Print(chunk)
+			chunks++
+			totalChars += len(chunk)
+		}
+		fmt.Println()
+
+		if serr := stream.Err(); serr != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", serr)
+			return 1
+		}
+
+		if debug {
+			debugf("chunks             = %d", chunks)
+			debugf("response           = %d chars", totalChars)
+			debugf("elapsed            = %s", time.Since(start).Round(time.Millisecond))
+			debugf("--- done ---")
+		}
+	} else {
+		summarizer := &LLMSummarizer{client: client}
+		summary, serr := summarizer.Summarize(ctx, system, user)
+		if serr != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", serr)
+			return 1
+		}
+
+		if debug {
+			debugf("response           = %d chars", len(summary))
+			debugf("elapsed            = %s", time.Since(start).Round(time.Millisecond))
+			debugf("--- done ---")
+		}
+
+		fmt.Println(summary)
 	}
 
-	summary, err := summarizer.Summarize(ctx, prompt)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		return 1
-	}
-
-	fmt.Println(summary)
 	return 0
 }
 
-// getDefaultProject gets the default GCP project from gcloud config.
-func getDefaultProject() (string, error) {
-	cmd := exec.Command("gcloud", "config", "get-value", "project")
-	output, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("failed to get default project: %w (ensure gcloud is installed and configured)", err)
-	}
+// debugf prints a labelled debug line to stderr.
+func debugf(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, "[debug] "+format+"\n", args...)
+}
 
-	project := strings.TrimSpace(string(output))
-	if project == "" {
-		return "", fmt.Errorf("no default project set (run: gcloud config set project PROJECT_ID)")
+// maskSecret redacts all but the first 4 characters of a secret.
+func maskSecret(s string) string {
+	if len(s) <= 4 {
+		return strings.Repeat("*", len(s))
 	}
-
-	return project, nil
+	return s[:4] + strings.Repeat("*", len(s)-4)
 }

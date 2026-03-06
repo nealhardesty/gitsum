@@ -33,3 +33,6 @@ gitsum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+system-prompt.txt
+user-prompt.txt

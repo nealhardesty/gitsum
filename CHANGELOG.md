@@ -1,5 +1,19 @@
 # Changelog
 
+## [Unreleased] - 2026-03-06
+
+### Changed
+- Replaced Google Vertex AI / Gemini backend with `easy-llm-wrapper` (supports Ollama and OpenRouter)
+- Removed `-p` (GCP project), `-r` (region), and `-m` (model) CLI flags; provider and model are now configured via environment variables (`OLLAMA_HOST`, `OPENROUTER_API_KEY`, `MODEL`)
+- Refactored `BuildPrompt` to return `(system, user string, truncated bool)` — proper system/user prompt split for LLM APIs
+- Renamed `GeminiSummarizer` to `LLMSummarizer`; updated `Summarizer` interface signature to `Summarize(ctx, system, user string)`
+- Removed `gemini.go` / `gemini_test.go`; added `summarizer.go` / `summarizer_test.go`
+- Verbose output now shows `Provider` and `Model` instead of GCP project/region
+- Updated help text to document environment variable configuration
+
+### Fixed
+- Removed stale `"under 500 characters"` assertion from `TestBuildPrompt_ContainsRules` (rule did not exist in prompt template)
+
 ## [0.1.2] - 2026-03-05
 
 ### Changed

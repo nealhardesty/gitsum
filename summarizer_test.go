@@ -11,16 +11,13 @@ type mockSummarizer struct {
 	err      error
 }
 
-func (m *mockSummarizer) Summarize(_ context.Context, _ string) (string, error) {
+func (m *mockSummarizer) Summarize(_ context.Context, _, _ string) (string, error) {
 	return m.response, m.err
 }
 
 func TestMockSummarizer_Success(t *testing.T) {
-	mock := &mockSummarizer{
-		response: "Add new feature for user auth",
-	}
-
-	result, err := mock.Summarize(context.Background(), "some prompt")
+	mock := &mockSummarizer{response: "Add new feature for user auth"}
+	result, err := mock.Summarize(context.Background(), "system", "user")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -30,17 +27,14 @@ func TestMockSummarizer_Success(t *testing.T) {
 }
 
 func TestMockSummarizer_Error(t *testing.T) {
-	mock := &mockSummarizer{
-		err: context.DeadlineExceeded,
-	}
-
-	_, err := mock.Summarize(context.Background(), "some prompt")
+	mock := &mockSummarizer{err: context.DeadlineExceeded}
+	_, err := mock.Summarize(context.Background(), "system", "user")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
 }
 
-func TestGeminiSummarizer_ImplementsInterface(t *testing.T) {
-	// Compile-time check that GeminiSummarizer implements Summarizer.
-	var _ Summarizer = (*GeminiSummarizer)(nil)
+func TestLLMSummarizer_ImplementsInterface(t *testing.T) {
+	// Compile-time check that LLMSummarizer implements Summarizer.
+	var _ Summarizer = (*LLMSummarizer)(nil)
 }

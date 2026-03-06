@@ -10,7 +10,7 @@ func TestBuildPrompt(t *testing.T) {
 		name          string
 		diff          string
 		wantTruncated bool
-		wantContains  string
+		wantContains  string // checked against user prompt
 	}{
 		{
 			name:          "normal diff",
@@ -39,28 +39,27 @@ func TestBuildPrompt(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			prompt, truncated := BuildPrompt(tt.diff)
+			system, user, truncated := BuildPrompt(tt.diff)
 
 			if truncated != tt.wantTruncated {
 				t.Errorf("truncated = %v, want %v", truncated, tt.wantTruncated)
 			}
 
-			if tt.wantContains != "" && !strings.Contains(prompt, tt.wantContains) {
-				t.Errorf("prompt does not contain %q", tt.wantContains)
+			if tt.wantContains != "" && !strings.Contains(user, tt.wantContains) {
+				t.Errorf("user prompt does not contain %q", tt.wantContains)
 			}
 
-			// Verify the prompt always contains the template instructions.
-			if !strings.Contains(prompt, "imperative mood") {
-				t.Error("prompt missing imperative mood instruction")
+			// System prompt always contains the core instructions.
+			if !strings.Contains(system, "imperative mood") {
+				t.Error("system prompt missing imperative mood instruction")
 			}
 
 			if tt.wantTruncated {
-				// The diff portion should be exactly MaxDiffChars.
-				idx := strings.Index(prompt, "Diff:\n")
-				if idx == -1 {
-					t.Fatal("prompt missing 'Diff:' marker")
+				// The diff portion of the user prompt should be exactly MaxDiffChars.
+				if !strings.HasPrefix(user, "Diff:\n") {
+					t.Fatal("user prompt missing 'Diff:' prefix")
 				}
-				diffPortion := prompt[idx+len("Diff:\n"):]
+				diffPortion := user[len("Diff:\n"):]
 				if len(diffPortion) != MaxDiffChars {
 					t.Errorf("truncated diff length = %d, want %d", len(diffPortion), MaxDiffChars)
 				}
@@ -70,17 +69,16 @@ func TestBuildPrompt(t *testing.T) {
 }
 
 func TestBuildPrompt_ContainsRules(t *testing.T) {
-	prompt, _ := BuildPrompt("some diff")
+	system, _, _ := BuildPrompt("some diff")
 
 	rules := []string{
 		"plain text only",
 		"imperative mood",
-		"under 500 characters",
 		"under 72 characters",
 	}
 	for _, rule := range rules {
-		if !strings.Contains(prompt, rule) {
-			t.Errorf("prompt missing rule: %q", rule)
+		if !strings.Contains(system, rule) {
+			t.Errorf("system prompt missing rule: %q", rule)
 		}
 	}
 }

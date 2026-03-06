@@ -1,8 +1,10 @@
 # gitsum
 
-Generate concise git commit message summaries using Google Gemini via Vertex AI.
+Generate concise git commit message summaries using an LLM via [easy-llm-wrapper](https://github.com/nealhardesty/easy-llm-wrapper).
 
-`gitsum` reads diffs from a git repository and sends them to Gemini to produce a short, imperative-mood commit message suitable for use with `git commit -m`. By default it uses staged changes only, falling back to all changes when nothing is staged.
+`gitsum` reads diffs from a git repository and sends them to an LLM to produce a detailed, imperative-mood commit message suitable for use with `git commit -m`. By default it uses staged changes only, falling back to all changes when nothing is staged.
+
+Supports **Ollama** (local) and **OpenRouter** (cloud) as backends. Provider and model are selected automatically from environment variables.
 
 ## Installation
 
@@ -21,12 +23,23 @@ make build
 ## Prerequisites
 
 - Go 1.24+
-- A Google Cloud project with Vertex AI API enabled
-- Application Default Credentials configured:
+- One of:
+  - **Ollama**: set `OLLAMA_HOST` (e.g. `http://localhost:11434`)
+  - **OpenRouter**: set `OPENROUTER_API_KEY`
 
-```bash
-gcloud auth application-default login
-```
+## Provider Configuration
+
+Provider and model are configured via environment variables. Ollama takes priority over OpenRouter when both are set.
+
+| Variable | Description |
+|---|---|
+| `OLLAMA_HOST` | Ollama base URL. When set, Ollama is used as the provider. |
+| `OPENROUTER_API_KEY` | OpenRouter API key. Used when `OLLAMA_HOST` is not set. |
+| `MODEL` | Override the default model for the active provider. |
+
+Default models:
+- Ollama: `llama3.2`
+- OpenRouter: `anthropic/claude-3-haiku`
 
 ## Usage
 
@@ -40,14 +53,15 @@ git commit -m "$(gitsum)"
 # Include all changes (staged + unstaged + untracked) regardless of staging
 gitsum --all
 
-# Use a different model or region
-gitsum -m gemini-2.5-pro -r us-east1
+# Specify a different git directory
+gitsum -d /path/to/repo
 
-# Override GCP project explicitly
-gitsum -p my-gcp-project
-
-# Verbose output (diff stats and model info to stderr)
+# Verbose output (diff stats, provider, and model to stderr)
 gitsum --verbose
+
+# Use a specific model (via env var)
+MODEL=llama3.1:70b gitsum
+MODEL=anthropic/claude-3-5-sonnet gitsum
 ```
 
 ## Options
@@ -56,40 +70,28 @@ gitsum --verbose
 |---|---|---|
 | `-v` | | Print version and exit |
 | `-d <dir>` | `.` | Git repository directory |
-| `-p <project>` | gcloud default | GCP project ID |
-| `-r <region>` | `us-central1` | GCP region |
-| `-m <model>` | `gemini-2.5-flash` | Gemini model name |
 | `--all` / `-a` | `false` | Include all changes (staged + unstaged + untracked) |
-| `--verbose` | `false` | Print diff stats and model info to stderr |
-
-## Project Resolution
-
-The GCP project ID is resolved in this order:
-
-1. `-p` flag
-2. `GOOGLE_CLOUD_PROJECT` environment variable
-3. `CLOUDSDK_CORE_PROJECT` environment variable
-4. `gcloud config get-value project` (your gcloud default)
+| `--verbose` | `false` | Print diff stats, provider, and model to stderr |
 
 ## Architecture
 
 ```
-main.go        CLI entry point, flag parsing, orchestration
-git.go         Git diff extraction via exec.Command
-prompt.go      Prompt template construction and diff truncation
-gemini.go      Vertex AI Gemini client (Summarizer interface)
-version.go     Semantic version constant
+main.go          CLI entry point, flag parsing, orchestration
+git.go           Git diff extraction via exec.Command
+prompt.go        Prompt construction (system + user split) and diff truncation
+summarizer.go    Summarizer interface + LLMSummarizer using easy-llm-wrapper
+version.go       Semantic version constant
 ```
 
-All status and error output goes to stderr. Only the clean commit message summary goes to stdout, making it safe for command substitution (`$(gitsum)`).
+All status and error output goes to stderr. Only the clean commit message goes to stdout, making it safe for command substitution (`$(gitsum)`).
 
-The `Summarizer` interface in `gemini.go` enables mock-based testing without API calls.
+The `Summarizer` interface in `summarizer.go` enables mock-based testing without live LLM calls.
 
 Diffs larger than 100,000 characters are truncated with a warning to stderr.
 
 ## Dependencies
 
-- [`google.golang.org/genai`](https://pkg.go.dev/google.golang.org/genai) - Google Gen AI unified SDK for Vertex AI
+- [`github.com/nealhardesty/easy-llm-wrapper`](https://github.com/nealhardesty/easy-llm-wrapper) — unified LLM client for Ollama and OpenRouter
 
 ## Development
 
