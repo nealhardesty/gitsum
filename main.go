@@ -30,7 +30,7 @@ func run() int {
 
 	flag.BoolVar(&showVersion, "v", false, "Print version and exit")
 	flag.StringVar(&dir, "dir", ".", "Git repository directory")
-	flag.StringVar(&model, "m", "gpt-oss:20b", "Model override (also honoured via MODEL env var)")
+	flag.StringVar(&model, "m", "", "Model override (also honoured via MODEL env var); default chosen by easy-llm-wrapper")
 	flag.BoolVar(&includeAll, "all", false, "Include all changes (staged + unstaged + untracked)")
 	flag.BoolVar(&includeAll, "a", false, "Include all changes (alias for --all)")
 	flag.BoolVar(&verbose, "verbose", false, "Print diff stats and model info to stderr")
@@ -79,8 +79,8 @@ func run() int {
 		debugf("streaming          = %v", !noStream)
 	}
 
-	// Apply model default: env var takes priority, then -m flag.
-	if os.Getenv("MODEL") == "" {
+	// Apply model override: env var takes priority, then -m flag.
+	if os.Getenv("MODEL") == "" && model != "" {
 		os.Setenv("MODEL", model)
 	}
 

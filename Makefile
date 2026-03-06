@@ -60,7 +60,7 @@ push:
 	git add .; \
 	git commit -m "$$(./$(BINARY))"; \
 	git push origin; \
-	git tag -a "v$$NEW_VERSION" -m "Release v$$NEW_VERSION"; \
+	git tag -a "v$$NEW_VERSION" -m "Release v$$NEW_VERSION. $$(./$(BINARY))"; \
 	git push origin "v$$NEW_VERSION"; \
 	echo "Released v$$NEW_VERSION"
 
